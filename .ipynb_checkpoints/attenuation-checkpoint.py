@@ -75,17 +75,16 @@ def estimate_alpha(radar, alpha_dict, default_alpha=0.015, pair_threshold=30000,
     
     #get radar time
     radar_starttime = cftime.num2pydate(radar.time['data'][0], radar.time['units'])
-    
     #extract data
-    z_data = radar.get_field(0, refl_field)
-    zdr_data = radar.get_field(0, zdr_field)
-    rhv_data = radar.get_field(0, rhohv_field)
+    z_data = radar.get_field(0, refl_field).filled()
+    zdr_data = radar.get_field(0, zdr_field).filled()
+    rhohv_data = radar.get_field(0, rhohv_field).filled()
     isom_data = radar.get_field(0, isom_field)
     
     #build masks
     z_mask = np.logical_and(z_data>=min_z, z_data<=max_z)
     zdr_mask = np.logical_and(zdr_data>=min_zdr, zdr_data<=max_zdr)
-    rhv_mask = rhv_data>min_rhv
+    rhv_mask = rhohv_data>min_rhohv
     h_mask = isom_data==0 #below melting level
     final_mask = z_mask & zdr_mask & rhv_mask & h_mask
     
@@ -96,23 +95,25 @@ def estimate_alpha(radar, alpha_dict, default_alpha=0.015, pair_threshold=30000,
     #halt if insufficent number of pairs
     n_pairs = len(alpha_dict['z_pairs'])
     if n_pairs < pair_threshold:
-        if verbose:
-            print('insufficent pairs', n_pairs, 'using previous alpha of', alpha_dict['alpha_ts'][-1])
         #update alpha timeseries
         if len(alpha_dict['alpha_ts'])>0:
+            if verbose:
+                print('insufficent pairs', n_pairs, '- Using previous alpha of', alpha_dict['alpha_ts'][-1])
             alpha_dict['alpha_ts'].append(alpha_dict['alpha_ts'][-1]) #update using last alpha
         else:
+            if verbose:
+                print('insufficent pairs', n_pairs, '- Using default alpha of', default_alpha)
             alpha_dict['alpha_ts'].append(default_alpha)#update to default alpha
         alpha_dict['dt_ts'].append(radar_starttime)
         return alpha_dict
-    
+
     #find z-zdr slope
     if verbose:
         print(n_pairs, 'pairs found, finding Z-ZDR slope')
     K = _find_z_zdr_slope(alpha_dict)
     if verbose:
         print('slope value', K)
-    
+
     #update alpha
     if K < z_zdr_slope_threshold:
         alpha = 0.049 - 0.75*K
@@ -120,7 +121,7 @@ def estimate_alpha(radar, alpha_dict, default_alpha=0.015, pair_threshold=30000,
         alpha = default_alpha
     if verbose:
         print('alpha value', alpha)
-    
+
     #update timeseries
     alpha_dict['alpha_ts'].append(alpha)
     alpha_dict['dt_ts'].append(radar_starttime)
@@ -158,7 +159,6 @@ def retrieve_zphi(radar, alpha=0.015, beta=0.62, smooth_window_len=5, rhohv_edge
     JAOT, 2014, 31, 599-619.
     """
     
-    
     # extract fields and parameters from radar if they exist
     # reflectivity and differential phase must exist
     # create array to hold the output data
@@ -187,7 +187,7 @@ def retrieve_zphi(radar, alpha=0.015, beta=0.62, smooth_window_len=5, rhohv_edge
     #mask data above melting level
     isom = radar.fields[isom_field]['data']
     gatefilter.exclude_gates(isom > 0)
-    
+
     #create rhohv and z mask for determining r1 and r2
     edge_mask = np.logical_or(rhohv.filled(fill_value=0) < rhohv_edge_threshold, sm_refl.filled(fill_value=0) < refl_edge_threshold)
 
@@ -198,6 +198,7 @@ def retrieve_zphi(radar, alpha=0.015, beta=0.62, smooth_window_len=5, rhohv_edge
     gatefilter.include_gates(valid_mask_filt)
                                                             
     #prepare phidp
+
     mask_phidp = np.ma.getmaskarray(phidp)
     mask_phidp = np.logical_and(mask_phidp, ~valid_mask_filt)
     corr_phidp = np.ma.masked_where(mask_phidp, phidp).filled(fill_value=0)
@@ -222,7 +223,7 @@ def retrieve_zphi(radar, alpha=0.015, beta=0.62, smooth_window_len=5, rhohv_edge
             # before the first filter gate
             end_gate_arr[ray] = ind_rng[-1]-1 #ensures that index is -1 if all rays are masked
             start_gate_arr[ray] = ind_rng[0]
-
+            
     for ray in range(radar.nrays):
         # perform attenuation calculation on a single ray
 
@@ -248,10 +249,10 @@ def retrieve_zphi(radar, alpha=0.015, beta=0.62, smooth_window_len=5, rhohv_edge
                     ray_refl_linear * self_cons_number /
                     (I_indef[0] + self_cons_number * I_indef))
     #add ah into radar
-    spec_at = pyart.config.get_metadata(ah_field)
-    temp_array = np.ma.masked_where(gatefilter.gate_excluded, ah)
-    spec_at['data'] = ah
-    spec_at['_FillValue'] = ah.fill_value
+    spec_at = pyart.config.get_metadata('specific_attenuation')
+    ah_masked = np.ma.masked_where(gatefilter.gate_excluded, ah)
+    spec_at['data'] = ah_masked
+    spec_at['_FillValue'] = ah_masked.fill_value
     radar.add_field(ah_field, spec_at, replace_existing=True)
     
     return radar
