@@ -72,12 +72,14 @@ def _interpolate_coeff(temp_list, coeff_list, temp_field):
     
     return coeff_array
 
-def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_attenuation', kdp_field='corrected_specific_differential_phase',
+def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_attenuation',
+                 kdp_field='corrected_specific_differential_phase', phidp_field='corrected_differential_phase',
                  rhohv_field='corrected_cross_correlation_ratio', temp_field='temperature', isom_field='height_over_isom',
                  zr_field='zr_rainrate', ahr_field='ah_rainrate', kdpr_field='kdp_rainrate', hybridr_field='hybrid_rainrate',
                  hca_field='radar_echo_classification',
                  beamb_data=None,
-                 refl_lower_threshold=45., refl_upper_threshold=50.):
+                 refl_lower_threshold=45., refl_upper_threshold=50.,
+                 min_delta_phidp=3.):
     
     """
     WHAT: retrieve polarimetric rain rates for ah, kdp and hybrid kdp/ah technique
@@ -93,12 +95,17 @@ def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_a
     
     if band == 'S':
         #Ryzhkov et al. 2014 table 1
-        ah_coeff = {'t':[0,10,20,30],'a':[2230, 3100, 4120, 5330], 'b':[1.03, 1.03, 1.03, 1.03]}
+        #ah_coeff = {'t':[0,10,20,30],'a':[2230, 3100, 4120, 5330], 'b':[1.03, 1.03, 1.03, 1.03]}
+        #fitted coefficents
+        ah_coeff = {'t':[0,10,20],'a':[2121, 2908, 3836], 'b':[0.99, 0.99, 0.99]}
         #Wang et al. 2019
         kdp_coeff = {'a':27.00, 'b':0.77}
         
     elif band == 'C':
-        ah_coeff = {'t':[0,10,20,30],'a':[221, 250, 294, 352], 'b':[0.92, 0.91, 0.89, 0.89]}
+        #Ryzhkov et al. 2014 table 1
+        #ah_coeff = {'t':[0,10,20,30],'a':[221, 250, 294, 352], 'b':[0.92, 0.91, 0.89, 0.89]}
+        #fitted coefficents
+        ah_coeff = {'t':[0,10,20],'a':[193, 203, 208], 'b':[0.82, 0.77, 0.71]}
         #Ryzhkov et al. 2013 coefficients: Polarimetric radar characteristics of melting hail. part II: Practical implications
         kdp_coeff = {'a':25.3, 'b':0.776}
     
@@ -109,6 +116,8 @@ def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_a
     ah = radar.fields[ah_field]['data'].copy()
     radar.check_field_exists(kdp_field)
     kdp = radar.fields[kdp_field]['data'].copy()
+    radar.check_field_exists(phidp_field)
+    phidp = radar.fields[phidp_field]['data'].copy()    
     radar.check_field_exists(temp_field)
     temperature = radar.fields[temp_field]['data'].copy()
     radar.check_field_exists(isom_field)
@@ -117,6 +126,7 @@ def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_a
     rhohv = radar.fields[rhohv_field]['data'].copy()
     radar.check_field_exists(hca_field)
     pid = radar.fields[hca_field]['data']
+    
     #assign ah coefficent assignment using temperature
     ah_a_array = _interpolate_coeff(ah_coeff['t'], ah_coeff['a'], temperature)
     ah_b_array = _interpolate_coeff(ah_coeff['t'], ah_coeff['b'], temperature)
@@ -158,6 +168,14 @@ def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_a
     kdp_weight[kdp_weight>1] = 1
     ah_weight = 1 - kdp_weight.copy()
     
+    #mask rays where the total span is less than 3 degrees
+    #find max phidp and pad back to array size
+    phidp_shape = np.shape(phidp)
+    phidp_span = np.amax(phidp, axis=1)
+    phidp_span = np.rot90(np.tile(phidp_span, (phidp_shape[1], 1)), 3)
+    phidp_mask = phidp_span<min_delta_phidp
+    ah_rain[phidp_mask] = np.nan
+    kdp_rain[phidp_mask] = np.nan
 #     radar.add_field_like(zr_field, 'kdp_weight', kdp_weight, replace_existing=True)
 #     radar.add_field_like(zr_field, 'ah_weight', ah_weight, replace_existing=True)
     

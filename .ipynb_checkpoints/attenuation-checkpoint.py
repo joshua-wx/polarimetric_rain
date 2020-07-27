@@ -144,12 +144,16 @@ def _alpha_function_from_temperature(band, tempin):
         upper_idx = np.where(temp_list>=tempin)[0][0]
     #define function coefficents
     if band == 'C':
-        func_a = [0.001448, 0.000988, 0.000765]
-        func_b = [0.06791, 0.05744, 0.04524]
+        func_a = [0.001404, 0.000718, 0.000643]
+        func_b = [0.08310, 0.07797, 0.05789]
+#         func_a = [0.001448, 0.000988, 0.000765]
+#         func_b = [0.06791, 0.05744, 0.04524]
         max_alpha = 0.2
     elif band == 'S':    
-        func_a = [0.000790, 0.000579, 0.000451]
-        func_b = [0.00991, 0.007217, 0.005449]
+        func_a = [0.000851, 0.000623, 0.000485]
+        func_b = [0.01320, 0.009870, 0.007516]
+#         func_a = [0.000790, 0.000579, 0.000451]
+#         func_b = [0.00991, 0.007217, 0.005449]
         max_alpha = 0.05
     else:
         print('band unknown')
@@ -228,6 +232,7 @@ def _find_alpha_zhang2020(z_pairs, zdr_pairs, band, t_mean, verbose=False, plot_
     #define scaling to transform bin thresholds provided by Zhang to those suitable for Australian radars
     #NEXRAD data is 0.5deg azimuth, 250m gates and at least 300km range.
     #Australian data is 1.0deg azumuth, 250m dates and 150km range.
+    #set to 0.25, seems to work well, needs a sensitivity study on the actual ranges
     rescale = 0.25
     
     #define individual bin thresholds (from email with Jian Zhang 2020/06/25)
@@ -241,41 +246,47 @@ def _find_alpha_zhang2020(z_pairs, zdr_pairs, band, t_mean, verbose=False, plot_
     min_50dbz = [240*rescale]*1     #bin centres: 50 (len:1) (changed from 500 to 240 to be less conservative 0> Australian radars sample large volumes, so reduces high refl)
         
     #define z bins and tests for each case
-    #case 1: 20-50dBZ bin centres, threshold samples for each bin
+    #case 1: 20-50dBZ bin centres, threshold of 8 valid median zdr values (in 20-50dBZ) and 3 valid median zdr values in 42-50dBZ
     case1_zbins = np.arange(20, 50+z_bin_width, z_bin_width)
     case1_zdrbins, case1_bin_count = _median_zdr_bins(case1_zbins, z_bin_width, z_pairs, zdr_pairs)
     case1_bin_mins = np.array(min_20_30dbz+min_32_34dbz+min_36_38dbz+min_40dbz+min_42_44dbz+min_46_48dbz+min_50dbz)
-    #case 2: 10-30dBZ bin centres, threshold samples for each bin
+    case1_valid_bins = 8
+    case1a_zbins = np.arange(42, 50+z_bin_width, z_bin_width)
+    case1a_zdrbins, case1a_bin_count = _median_zdr_bins(case1a_zbins, z_bin_width, z_pairs, zdr_pairs)
+    case1a_bin_mins = np.array(min_42_44dbz+min_46_48dbz+min_50dbz)
+    case1a_valid_bins = 3
+    #case 2: 10-30dBZ bin centres, threshold of 11 valid median zdr values
     case2_zbins = np.arange(10, 30+z_bin_width, z_bin_width)
     case2_zdrbins, case2_bin_count = _median_zdr_bins(case2_zbins, z_bin_width, z_pairs, zdr_pairs)
-    case2_bin_mins = np.array(min_10_18dbz+min_20_30dbz)    
-    #case 3: 10-40dBZ bin centres, threshold samples across range
+    case2_bin_mins = np.array(min_10_18dbz+min_20_30dbz)
+    case2_valid_bins = 11
+    #case 3: 10-40dBZ bin centres, threshold of 9 valid median zdr values
     case3_zbins = np.arange(10, 40+z_bin_width, z_bin_width)
     case3_zdrbins, case3_bin_count = _median_zdr_bins(case3_zbins, z_bin_width, z_pairs, zdr_pairs)
-    case3_min = np.sum(min_10_18dbz+min_20_30dbz+min_32_34dbz+min_36_38dbz+min_40dbz)
-    #case 4: 44-50dBZ bin centres, threshold samples across range
+    case3_bin_mins = np.array(min_10_18dbz+min_20_30dbz+min_32_34dbz+min_36_38dbz+min_40dbz)
+    case3_valid_bins = 9
+    #case 4: 44-50dBZ bin centres, threshold of 50 samples across range
     case4_zbins = np.arange(44, 50+z_bin_width, z_bin_width)
     case4_zdrbins, case4_bin_count = _median_zdr_bins(case4_zbins, z_bin_width, z_pairs, zdr_pairs)
     case4_min = 50   #(from email with Jian Zhang 2020/06/25)
     
     if verbose:
         print('')
-        print('case 1', np.greater_equal(case1_bin_count, case1_bin_mins))
-        print('case 1 count', case1_bin_count)
-        print('case 1 thresholds', case1_bin_mins)
-        print('case 2', np.greater_equal(case2_bin_count, case2_bin_mins))
-        print('case 2 count', case2_bin_count)
-        print('case 2 thresholds', case2_bin_mins)
-        print('case 3', np.sum(case3_bin_count) >= case3_min)
-        print('case 3 total count', np.sum(case3_bin_count))
-        print('case 3 min', case3_min)
+        print('case 1 valid bins', np.sum(np.greater_equal(case1_bin_count, case1_bin_mins)))
+        print('case 1 thresholds', case1_valid_bins)
+        print('case 1a valid bins', np.sum(np.greater_equal(case1a_bin_count, case1a_bin_mins)))
+        print('case 1a thresholds', case1a_valid_bins)
+        print('case 2 valid bins', np.sum(np.greater_equal(case2_bin_count, case2_bin_mins)))
+        print('case 2 thresholds', case2_valid_bins)
+        print('case 3 valid bins', np.sum(np.greater_equal(case3_bin_count, case3_bin_mins)))
+        print('case 3 thresholds', case3_valid_bins)
         print('case 4', np.sum(case4_bin_count) >= case4_min)
         print('case 4 total count', np.sum(case4_bin_count))
         print('case 4 min', case4_min)
         print('')
     
     #case 1
-    if np.all(np.greater_equal(case1_bin_count, case1_bin_mins)):
+    if np.sum(np.greater_equal(case1_bin_count, case1_bin_mins)) >= case1_valid_bins and np.sum(np.greater_equal(case1a_bin_count, case1a_bin_mins)) >= case1a_valid_bins:
         if verbose:
             print('1: fitted 20-50dbZ')
         LS = _linear_regress(case1_zbins, case1_zdrbins)
@@ -284,7 +295,7 @@ def _find_alpha_zhang2020(z_pairs, zdr_pairs, band, t_mean, verbose=False, plot_
         if plot_fits:
             plot_fits_fun(z_pairs, zdr_pairs, case1_zbins, case1_zdrbins, LS)
     #case 2
-    elif np.all(np.greater_equal(case2_bin_count, case2_bin_mins)):
+    elif np.sum(np.greater_equal(case2_bin_count, case2_bin_mins)) >= case2_valid_bins:
         if verbose:
             print('2: 10-30dBZ valid, used default stratiform')
         alpha = default_strat_alpha
@@ -292,7 +303,7 @@ def _find_alpha_zhang2020(z_pairs, zdr_pairs, band, t_mean, verbose=False, plot_
         if plot_fits:
             plot_fits_fun(z_pairs, zdr_pairs, case2_zbins, case2_zdrbins)
     #case 3
-    elif np.sum(case3_bin_count) >= case3_min:
+    elif np.sum(np.greater_equal(case3_bin_count, case3_bin_mins)) >= case3_valid_bins:
         if verbose:
             print('3: fitted 10-40dbz')
         LS = _linear_regress(case3_zbins, case3_zdrbins)
@@ -318,10 +329,11 @@ def _find_alpha_zhang2020(z_pairs, zdr_pairs, band, t_mean, verbose=False, plot_
             plot_fits_fun(z_pairs, zdr_pairs, case4_zbins, case4_zdrbins)
     return alpha, alpha_method
 
-def estimate_alpha_zhang2020(radar, band, pair_threshold=30000, min_pairs=500,
+def estimate_alpha_zhang2020(radar, band,
                    min_z=10, max_z=50, min_zdr=-4, max_zdr=4, min_rhohv=0.98,
-                  refl_field='reflectivity', zdr_field='corrected_differential_reflectivity', rhohv_field='corrected_cross_correlation_ratio',
-                  isom_field='height_over_isom', temp_field='temperature', verbose=False):
+                   min_r=20, max_r=120,
+                   refl_field='reflectivity', zdr_field='corrected_differential_reflectivity', rhohv_field='corrected_cross_correlation_ratio',
+                   isom_field='height_over_isom', temp_field='temperature', verbose=False):
     
     """
     WHAT: Estimate alpha by accumulating Z - ZDR pairs across scans until the pair threshold has been reaches,
@@ -329,12 +341,13 @@ def estimate_alpha_zhang2020(radar, band, pair_threshold=30000, min_pairs=500,
     INPUT:
         radar: pyart radar object
         alpha_dict: dictionary containing Z and ZDR pairs and alpha ts
-        pair_threshold: number of pairs required for Z-ZDR slope calculation (int)
         min_z: minimum reflectivity for pairs (float, dB)
         max_z: maximum reflectivity for pairs (float, dB)
         max_zdr: minimum differential reflectivity for pairs (float, dB)
         min_zdr: maximum differential reflectivity for pairs (float, dB)
         min_rhohv: minimum cross correlation for pairs (float)
+        min_r: minimum range (km)
+        max_r: maximum range (km)
         
     OUTPUT:
         alpha: alpha value (float)
@@ -348,6 +361,9 @@ def estimate_alpha_zhang2020(radar, band, pair_threshold=30000, min_pairs=500,
     zdr_data = radar.get_field(0, zdr_field).filled()
     rhohv_data = radar.get_field(0, rhohv_field).filled()
     isom_data = radar.get_field(0, isom_field)
+    range_vec = radar.range['data']/1000
+    azi_vec = radar.get_azimuth(0)
+    range_data, _ = np.meshgrid(range_vec, azi_vec)
     
     #build masks
     z_mask = np.logical_and(z_data>=min_z, z_data<=max_z)
@@ -355,7 +371,8 @@ def estimate_alpha_zhang2020(radar, band, pair_threshold=30000, min_pairs=500,
     nan_mask = np.logical_and(~np.isnan(z_data), ~np.isnan(zdr_data))
     rhv_mask = rhohv_data>min_rhohv
     h_mask = isom_data==0 #below melting level
-    final_mask = z_mask & zdr_mask & rhv_mask & h_mask & nan_mask
+    r_mask = np.logical_and(range_data>=min_r, range_data<=max_r)
+    final_mask = z_mask & zdr_mask & rhv_mask & h_mask & r_mask & nan_mask
     
     #get mean temperature of first tilt
     t_data = radar.get_field(0, temp_field)
@@ -365,11 +382,11 @@ def estimate_alpha_zhang2020(radar, band, pair_threshold=30000, min_pairs=500,
         t_mean = np.mean(t_data)
         
     #find alpha
-    alpha = _find_alpha_zhang2020(z_data[final_mask], zdr_data[final_mask], band, t_mean, verbose=verbose)
+    alpha, alpha_method = _find_alpha_zhang2020(z_data[final_mask], zdr_data[final_mask], band, t_mean, verbose=verbose)
     if verbose:
         print('alpha value', alpha)
                            
-    return alpha
+    return alpha, alpha_method
 
 def estimate_alpha_wang2019(radar, alpha_dict, band, pair_threshold=30000, min_pairs=500,
                    min_z=20, max_z=50, min_zdr=-4, max_zdr=4, min_rhohv=0.98,
@@ -625,5 +642,13 @@ def retrieve_zphi(radar, band, alpha, alpha_method=1, beta=0.64884, smooth_windo
     cor_z['data'] = cor_z_masked
     cor_z['_FillValue'] = cor_z_masked.fill_value
     radar.add_field(corz_field, cor_z, replace_existing=True)
+
+    #add PIA
+    cor_z = pyart.config.get_metadata('corrected_reflectivity')
+    cor_z_masked = np.ma.masked_where(gatefilter.gate_excluded, pia + refl)
+    cor_z['data'] = cor_z_masked
+    cor_z['_FillValue'] = cor_z_masked.fill_value
+    radar.add_field(corz_field, cor_z, replace_existing=True)
+    
     
     return radar
