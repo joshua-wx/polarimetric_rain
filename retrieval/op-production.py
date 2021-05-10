@@ -219,6 +219,8 @@ def torrentfields(vol_ffn):
     data_sweep1 = radar.get_field(sort_idx[0], 'hybrid_rainrate', copy=True).filled(np.nan)
     data_sweep2 = radar.get_field(sort_idx[1], 'hybrid_rainrate', copy=True).filled(np.nan)
     data_combined = np.nanmax(np.stack((data_sweep1, data_sweep2), axis=2), axis=2)
+    
+    
     #build metadata and grid
     r = radar.range['data']
     th = 450 - radar.get_azimuth(sort_idx[0], copy=False)
