@@ -48,8 +48,8 @@ def do_gatefilter(radar, refl_name='DBZ', phidp_name="PHIDP", rhohv_name='RHOHV_
         gf_despeckeld: GateFilter
             Gate filter (excluding all bad data).
     """
-    # Initialize gatefilter
-    gf = pyart.filters.GateFilter(radar)
+    # Despeckle
+    gf = pyart.correct.despeckle_field(radar, refl_name)
 
     # Remove obviously wrong data.
     gf.exclude_outside(zdr_name, -6.0, 7.0)
@@ -57,9 +57,6 @@ def do_gatefilter(radar, refl_name='DBZ', phidp_name="PHIDP", rhohv_name='RHOHV_
 
     # Compute texture of PHIDP and remove noise.
     # GMM filter should be used here to remove GC
-    gf.exclude_below(rhohv_name, 0.8)
+    gf.exclude_below(rhohv_name, 0.7)
 
-    # Despeckle
-    gf_despeckeld = pyart.correct.despeckle_field(radar, refl_name, gatefilter=gf)
-
-    return gf_despeckeld
+    return gf

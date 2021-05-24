@@ -19,73 +19,16 @@ Codes for estimating various parameters related to Hydrometeors.
 # Other Libraries
 import pyart
 import numpy as np
+import h5py
 
-from csu_radartools import csu_liquid_ice_mass, csu_fhc, csu_blended_rain, csu_dsd
+from csu_radartools import csu_blended_rain, csu_fhc
 
-
-def dsd_retrieval(radar, gatefilter, kdp_name, zdr_name, refl_name='DBZ_CORR'):
+def csu_hca(radar, gatefilter, kdp_name, zdr_name, band, refl_name='DBZ_CORR',
+                   rhohv_name='RHOHV_CORR',
+                   temperature_name='temperature',
+                   height_name='height'):
     """
-    Compute the DSD retrieval using the csu library.
-
-    Parameters:
-    ===========
-    radar:
-        Py-ART radar structure.
-    refl_name: str
-        Reflectivity field name.
-    zdr_name: str
-        ZDR field name.
-    kdp_name: str
-        KDP field name.
-
-    Returns:
-    ========
-    nw_dict: dict
-        Normalized Intercept Parameter.
-    d0_dict: dict
-        Median Volume Diameter.
-    """
-    dbz = radar.fields[refl_name]['data'].copy().filled(np.NaN)
-    zdr = radar.fields[zdr_name]['data'].copy()
-    try:
-        kdp = radar.fields[kdp_name]['data'].copy().filled(np.NaN)
-    except AttributeError:
-        kdp = radar.fields[kdp_name]['data'].copy()
-
-    d0, Nw, mu = csu_dsd.calc_dsd(dz=dbz, zdr=zdr, kdp=kdp, band='C')
-
-    Nw = np.log10(Nw)
-    Nw[gatefilter.gate_excluded] = np.NaN
-    Nw = np.ma.masked_invalid(Nw).astype(np.float32)
-    np.ma.set_fill_value(Nw, np.NaN)
-
-    d0[gatefilter.gate_excluded] = np.NaN
-    d0 = np.ma.masked_invalid(d0).astype(np.float32)
-    np.ma.set_fill_value(d0, np.NaN)
-
-    nw_dict = {'data': Nw,
-               'long_name': 'normalized_intercept_parameter',
-               'units': ' ',
-               '_FillValue': np.NaN,
-               '_Least_significant_digit': 2,
-               'reference': "doi:10.1175/2009JTECHA1258.1"}
-
-    d0_dict = {'data': d0,
-               'units': 'mm',
-               'long_name': 'median_volume_diameter',
-               '_FillValue': np.NaN,
-               '_Least_significant_digit': 2,
-               'reference': "doi:10.1175/2009JTECHA1258.1"}
-
-    return nw_dict, d0_dict
-
-
-def hydrometeor_classification(radar, gatefilter, kdp_name, zdr_name, band, refl_name='DBZ_CORR',
-                               rhohv_name='RHOHV_CORR',
-                               temperature_name='temperature',
-                               height_name='height'):
-    """
-    Compute hydrometeo classification.
+    Compute CSU hydrometeo classification.
 
     Parameters:
     ===========
@@ -134,11 +77,54 @@ def hydrometeor_classification(radar, gatefilter, kdp_name, zdr_name, band, refl
     the_comments = "1: Drizzle; 2: Rain; 3: Ice Crystals; 4: Aggregates; " +\
                    "5: Wet Snow; 6: Vertical Ice; 7: LD Graupel; 8: HD Graupel; 9: Hail; 10: Big Drops"
 
-    hydro_meta = {'data': hydro_data, 'units': ' ', 'long_name': 'Hydrometeor classification', '_FillValue': np.int16(0),
+    hydro_meta = {'data': hydro_data, 'units': ' ', 'long_name': 'CSU Hydrometeor classification', '_FillValue': np.int16(0),
                   'standard_name': 'Hydrometeor_ID', 'comments': the_comments}
 
     return hydro_meta
 
+def insert_ncar_pid(radar, odim_ffn):
+
+    """
+    extracts the NCAR PID from BOM ODIMH5 files into a CFRADIAL-type format and returns
+    the radar object containing this new field with the required metadata
+    """
+    sweep_shape = np.shape(radar.get_field(0,'reflectivity'))
+    pid_volume = None
+    with h5py.File(odim_ffn, 'r') as f:
+        h5keys = list(f.keys())
+        #init 
+        if 'how' in h5keys:
+            h5keys.remove('how')
+        if 'what' in h5keys:
+            h5keys.remove('what')     
+        if 'where' in h5keys:
+            h5keys.remove('where')
+        n_keys = len(h5keys)
+
+        #collate padded sweeps into a volume
+        for i in range(n_keys):
+            ds_name = 'dataset' + str(i+1)
+            pid_sweep = np.array(f[ds_name]['quality1']['data'])
+            shape = pid_sweep.shape
+            padded_pid_sweep = np.zeros(sweep_shape)
+            padded_pid_sweep[:shape[0],:shape[1]] = pid_sweep
+            if pid_volume is None:
+                pid_volume = padded_pid_sweep
+            else:
+                pid_volume = np.vstack((pid_volume, padded_pid_sweep))
+
+    #add to radar object
+    the_comments = "0: nodata; 1: Cloud; 2: Drizzle; 3: Light_Rain; 4: Moderate_Rain; 5: Heavy_Rain; " +\
+                   "6: Hail; 7: Rain_Hail_Mixture; 8: Graupel_Small_Hail; 9: Graupel_Rain; " +\
+                   "10: Dry_Snow; 11: Wet_Snow; 12: Ice_Crystals; 13: Irreg_Ice_Crystals; " +\
+                   "14: Supercooled_Liquid_Droplets; 15: Flying_Insects; 16: Second_Trip; 17: Ground_Clutter; " +\
+                   "18: misc1; 19: misc2"
+    pid_meta = {'data': pid_volume, 'units': ' ', 'long_name': 'NCAR Hydrometeor classification', '_FillValue': np.int16(0),
+                  'standard_name': 'Hydrometeor_ID', 'comments': the_comments}
+
+    radar.add_field('radar_echo_classification', pid_meta, replace_existing=True)
+
+    return radar
 
 def merhala_class_convstrat(radar, dbz_name="DBZ_CORR", rain_name="radar_estimated_rain_rate",
                             d0_name="D0", nw_name="NW"):

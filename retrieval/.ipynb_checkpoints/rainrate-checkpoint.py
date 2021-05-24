@@ -75,7 +75,7 @@ def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_a
                  rhohv_field='corrected_cross_correlation_ratio', temp_field='temperature', isom_field='height_over_isom',
                  zr_field='zr_rainrate', ahr_field='ah_rainrate', kdpr_field='kdp_rainrate', hybridr_field='hybrid_rainrate',
                  hca_field='radar_echo_classification',
-                 beamb_data=None,
+                 beamb_data=None, pid_ncar_clutter=17, pid_csu_clutter=1,
                  refl_lower_threshold=45., refl_upper_threshold=50., z_offset=0,
                  min_delta_phidp=2., ah_coeff_fitted=True):
     
@@ -166,7 +166,11 @@ def polarimetric(radar, band, refl_field='sm_reflectivity', ah_field='specific_a
     #create rain and hail masks, and weighting arrays
     #identify regions of high reflecitity, below the melting layer and not clutter
     kdp_lower_mask = np.logical_and(refl>refl_lower_threshold, height_over_isom == 0)
-    kdp_lower_mask[np.ma.getmask(pid)] = False
+    if radar.fields[hca_field]['long_name'] == 'NCAR Hydrometeor classification':
+        kdp_lower_mask[pid==pid_ncar_clutter] = False
+    else:
+        kdp_lower_mask[pid==pid_csu_clutter] = False
+    
     kdp_weight = (refl.copy()-refl_lower_threshold)/(refl_upper_threshold-refl_lower_threshold)
     kdp_weight[kdp_weight<0] = 0
     kdp_weight[kdp_weight>1] = 1

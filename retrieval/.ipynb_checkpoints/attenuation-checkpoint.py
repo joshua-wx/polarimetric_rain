@@ -508,7 +508,7 @@ def estimate_alpha_wang2019(radar, alpha_dict, band, pair_threshold=30000, min_p
 def retrieve_zphi(radar, band, alpha, alpha_method=1, beta=0.64884, smooth_window_len=5, rhohv_edge_threshold=0.98, refl_edge_threshold=5,
          refl_field='reflectivity', phidp_field='corrected_differential_phase', rhohv_field='corrected_cross_correlation_ratio',
          hca_field='radar_echo_classification', isom_field='height_over_isom', ah_field='specific_attenuation', corz_field='corrected_reflectivity',
-         z_offset=0):
+         z_offset=0, ncar_pid_values=[6,7], csu_pid_values=[9, 10]):
         
     """
     WHAT: Implementation of zphi technique for estimating specific attenuation from Ryzhkov et al.
@@ -558,7 +558,13 @@ def retrieve_zphi(radar, band, alpha, alpha_method=1, beta=0.64884, smooth_windo
     pid = radar.fields[hca_field]['data']
     gatefilter.exclude_gates(np.ma.getmask(pid))
     #mask hail
-    gatefilter.exclude_gates(pid==9)
+    if radar.fields[hca_field]['long_name'] == 'NCAR Hydrometeor classification':
+        hail_pid_values=ncar_pid_values
+    else:
+        hail_pid_values=csu_pid_values
+        
+    for hail_value in hail_pid_values:
+        gatefilter.exclude_gates(pid==hail_value)
     #mask data above melting level
     isom = radar.fields[isom_field]['data']
     gatefilter.exclude_gates(isom > 0)

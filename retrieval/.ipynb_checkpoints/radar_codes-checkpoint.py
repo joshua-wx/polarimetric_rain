@@ -316,7 +316,12 @@ def temperature_profile_access(radar, source='access'):
         request_time = '0000'
     
     if source == 'access':
-        access_root = '/g/data/lb4/ops_aps2/access-g/0001' #access g
+        if dtime < datetime.strptime('20200924', '%Y%m%d'):
+            #APS2
+            access_root = '/g/data/lb4/ops_aps2/access-g/1' #access g
+        else:
+            #APS3
+            access_root = '/g/data/wr45/ops_aps3/access-g/1' #access g
         access_folder = '/'.join([access_root, request_date, request_time, 'an', 'pl'])
         #build filenames
         temp_ffn = access_folder + '/air_temp.nc'
@@ -332,12 +337,12 @@ def temperature_profile_access(radar, source='access'):
             geopot_profile = geop_ds.geop_ht.sel(lon=grlon, method='nearest').sel(lat=grlat, method='nearest').data[0] #units: m
     elif source == "era5":
         #set era path
-        era5_root = '/g/data/ub4/era5/netcdf/pressure'
+        era5_root = '/g/data/rt52/era5/pressure-levels/reanalysis'
         #build file paths
         month_str = dtime.month
         year_str = dtime.year
-        temp_ffn = glob(f'{era5_root}/t/{year_str}/t_era5_aus_{year_str}{month_str:02}*.nc')[0]
-        geop_ffn = glob(f'{era5_root}/z/{year_str}/z_era5_aus_{year_str}{month_str:02}*.nc')[0]
+        temp_ffn = glob(f'{era5_root}/t/{year_str}/t_era5_oper_pl_{year_str}{month_str:02}*.nc')[0]
+        geop_ffn = glob(f'{era5_root}/z/{year_str}/z_era5_oper_pl_{year_str}{month_str:02}*.nc')[0]
         #extract data
         with xr.open_dataset(temp_ffn) as temp_ds:
             temp_data = temp_ds.t.sel(longitude=grlon, method='nearest').sel(latitude=grlat, method='nearest').sel(time=dtime, method='nearest').data[:] - 273.15 #units: deg K -> C

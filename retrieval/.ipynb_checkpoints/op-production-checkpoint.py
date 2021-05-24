@@ -130,8 +130,7 @@ def torrentfields(vol_ffn):
                                                gatefilter=gatefilter,
                                                skip_checks=True,
                                                vel_field='PHIDP_offset',
-                                               nyquist_vel=180,
-                                               unwrap_unit='volume')
+                                               nyquist_vel=180)
     radar.add_field_like("PHIDP", "PHIDP_unwraped", unfphidic['data'], replace_existing=True)
 
     #correct phase
@@ -146,16 +145,20 @@ def torrentfields(vol_ffn):
 
     if VERBOSE2:
         print('HCA processing')
-    # Hydrometeors classification
-    hydro_class = hydrometeors.hydrometeor_classification(radar,
-                                                          gatefilter,
-                                                          kdp_name=kdp_field_name,
-                                                          zdr_name='ZDR_CORR',
-                                                          rhohv_name='RHOHV_CORR',
-                                                          refl_name='DBZH',
-                                                          band=band)
-
-    radar.add_field('radar_echo_classification', hydro_class, replace_existing=True)
+    
+    #first try to use exisiting NCAR HCA into a field. Sometimes it is missing due a missing DP fields.
+    try:
+        hca_field = hydrometeors.extract_ncar_pid(radar, vol_ffn)
+    except:
+        #insert CSU HCA if NCAR PID is not in the file
+        hca_field = hydrometeors.csu_hca(radar,
+                                          gatefilter,
+                                          kdp_name=kdp_field_name,
+                                          zdr_name='ZDR_CORR',
+                                          rhohv_name='RHOHV_CORR',
+                                          refl_name='DBZH',
+                                          band=band)
+    radar.add_field('radar_echo_classification', hca_field, replace_existing=True)
     
     ##################################################################################################
     #
@@ -219,6 +222,8 @@ def torrentfields(vol_ffn):
     data_sweep1 = radar.get_field(sort_idx[0], 'hybrid_rainrate', copy=True).filled(np.nan)
     data_sweep2 = radar.get_field(sort_idx[1], 'hybrid_rainrate', copy=True).filled(np.nan)
     data_combined = np.nanmax(np.stack((data_sweep1, data_sweep2), axis=2), axis=2)
+    
+    
     #build metadata and grid
     r = radar.range['data']
     th = 450 - radar.get_azimuth(sort_idx[0], copy=False)
@@ -227,8 +232,10 @@ def torrentfields(vol_ffn):
     x = R * np.cos(np.pi * A / 180)
     y = R * np.sin(np.pi * A / 180)
     xgrid = np.linspace(-127750,127750,512)
-    gatespacing = r[1]-r[0]
-    rain_grid_2d = gridding.grid_data(data_combined, x, y, xgrid, xgrid, gatespacing=gatespacing)
+    xgrid, ygrid = np.meshgrid(xgrid, xgrid)
+    rain_grid_2d = gridding.KDtree_nn_interp(data_combined, x, y, xgrid, ygrid, nnearest = 16, maxdist = 2500)
+    #gatespacing = r[1]-r[0]
+    #rain_grid_2d = gridding.grid_data(data_combined, x, y, xgrid, xgrid, gatespacing=gatespacing)
         
     #extract metadata for RF3 grids
     standard_lat_1, standard_lat_2 = file_util.rf_standard_parallel_lookup(RADAR_ID)

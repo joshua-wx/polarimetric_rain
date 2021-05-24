@@ -74,7 +74,7 @@ def grid_data(data, xradar, yradar, xgrid, ygrid, theta_3db=1.5, rmax=150e3, gat
 
     return data_out
 
-def KD_nn_interp(data_in, x_in, y_in, x_out, y_out, nnearest = 15, maxdist = None):
+def KDtree_nn_interp(data_in, x_in, y_in, x_out, y_out, nnearest = 15, maxdist = None):
     """
     Nearest neighbour interpolation using scipy KDTree
     data_in: ndarray of float with shape (n1, n2)
